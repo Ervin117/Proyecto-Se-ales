@@ -252,7 +252,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 2;
+  hadc1.Init.NbrOfConversion = 1;
   hadc1.Init.DMAContinuousRequests = DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -538,69 +538,75 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	HAL_ADC_Start(&hadc1);  //Inicializa la conversión en el Canal IN0 del ADC1
-	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY); //Se espera a que se complete la conversión
-	adc_values[0] = HAL_ADC_GetValue(&hadc1); //Se obtiene el primer valor
-
-	sprintf(msg, "%d\n", adc_values[0]);
-	HAL_UART_Transmit(&huart2,(uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
-
-	// HAL_ADC_Start(&hadc1);  //Inicializa la conversión en el Canal IN1 del ADC1
-	// HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY); //Se espera a que se complete la conversión
-	// adc_values[1] = HAL_ADC_GetValue(&hadc1); //Se obtiene el segundo valor
-
-
-	x_n = 1.0*adc_values[0];
-
-	// Actualizar estados
-	// y_n = x_n;
-
-	y_n = (coefientes[0] * x_n)   + (coefientes[1] * x_n_1) + (coefientes[2] * x_n_2) + (coefientes[3] * x_n_3) + (coefientes[4] * x_n_4) -
-		  (coefientes[5] * y_n_1) - (coefientes[6] * y_n_2) - (coefientes[7] * y_n_3) - (coefientes[8] * y_n_4);
-
-
-	// Actualizar estados
-	x_n_4 = x_n_3;
-	x_n_3 = x_n_2;
-	x_n_2 = x_n_1;
-	x_n_1 = x_n;
-
-	y_n_4 = y_n_3;
-	y_n_3 = y_n_2;
-	y_n_2 = y_n_1;
-	y_n_1 = y_n;
-
-	if (y_n >= 4095)
+	if(htim->Instance == TIM10)
 	{
-		y_n = 4095;
-	}
+		HAL_ADC_Start(&hadc1);  //Inicializa la conversión en el Canal IN0 del ADC1
+		HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY); //Se espera a que se complete la conversión
+		adc_values[0] = HAL_ADC_GetValue(&hadc1); //Se obtiene el primer valor
 
-	if (y_n <= 0)
-	{
-		y_n = 0;
-	}
+		sprintf(msg, "%d\n", adc_values[0]);
+		HAL_UART_Transmit_IT(&huart2,(uint8_t*)msg, strlen(msg));
 
+		// HAL_ADC_Start(&hadc1);  //Inicializa la conversión en el Canal IN1 del ADC1
+		// HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY); //Se espera a que se complete la conversión
+		// adc_values[1] = HAL_ADC_GetValue(&hadc1); //Se obtiene el segundo valor
+
+
+		x_n = 1.0*adc_values[0];
+
+		// Actualizar estados
+		// y_n = x_n;
+
+		y_n = (coefientes[0] * x_n)   + (coefientes[1] * x_n_1) + (coefientes[2] * x_n_2) + (coefientes[3] * x_n_3) + (coefientes[4] * x_n_4) -
+			  (coefientes[5] * y_n_1) - (coefientes[6] * y_n_2) - (coefientes[7] * y_n_3) - (coefientes[8] * y_n_4);
+
+
+		// Actualizar estados
+		x_n_4 = x_n_3;
+		x_n_3 = x_n_2;
+		x_n_2 = x_n_1;
+		x_n_1 = x_n;
+
+		y_n_4 = y_n_3;
+		y_n_3 = y_n_2;
+		y_n_2 = y_n_1;
+		y_n_1 = y_n;
+
+		if (y_n >= 4095)
+		{
+			y_n = 4095;
+		}
+
+		if (y_n <= 0)
+		{
+			y_n = 0;
+		}
+
+		HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, (uint16_t)(y_n));
+	}
 	// Para fines de ejemplo, se envía al DAC el promedio entre los dos valores de ADC.
-	HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, (uint16_t)(y_n));
 
 }
 
 //Callback para la interrupción de UART2 al momento de recibir toda la data
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
-	rec[COEF_SIZE] = '\0'; //Se agrega un nulo para convertir a string
-
-	if (id_cof < 9)
+	if (huart->Instance == USART2)
 	{
-		coefientes[id_cof] = atof((char*)rec);  //Se convierte a float
-		id_cof ++;
-	}
-	else
-	{
-		id_cof = 0;
-	}
+		rec[COEF_SIZE] = '\0'; //Se agrega un nulo para convertir a string
 
-	//El UART se configura nuevamente para poder recibir la siguiente recepción
-	HAL_UART_Receive_DMA(&huart2,rec,COEF_SIZE);
+		if (id_cof < 9)
+		{
+			coefientes[id_cof] = atof((char*)rec);  //Se convierte a float
+			id_cof ++;
+		}
+		else
+		{
+			id_cof = 0;
+		}
+
+		//El UART se configura nuevamente para poder recibir la siguiente recepción
+		HAL_UART_Receive_DMA(&huart2,rec,COEF_SIZE);
+	}
 }
 
 /* USER CODE END 4 */
